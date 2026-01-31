@@ -1,5 +1,5 @@
 import { CONFIG } from "./config.js";
-import { fetchKlines, fetchLastPrice } from "./data/binance.js";
+import { fetchKlines, fetchLastPrice } from "./data/kraken.js";
 import { fetchChainlinkBtcUsd } from "./data/chainlink.js";
 import { startChainlinkPriceStream } from "./data/chainlinkWs.js";
 import { startPolymarketChainlinkPriceStream } from "./data/polymarketLiveWs.js";
@@ -20,7 +20,6 @@ import { detectRegime } from "./engines/regime.js";
 import { scoreDirection, applyTimeAwareness } from "./engines/probability.js";
 import { computeEdge, decide } from "./engines/edge.js";
 import { appendCsvRow, formatNumber, formatPct, getCandleWindowTiming, sleep } from "./utils.js";
-import { startBinanceTradeStream } from "./data/binanceWs.js";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
@@ -396,7 +395,6 @@ async function fetchPolymarketSnapshot() {
 }
 
 async function main() {
-  const binanceStream = startBinanceTradeStream({ symbol: CONFIG.symbol });
   const polymarketLiveStream = startPolymarketChainlinkPriceStream({});
   const chainlinkStream = startChainlinkPriceStream({});
 
@@ -421,9 +419,6 @@ async function main() {
 
   while (true) {
     const timing = getCandleWindowTiming(CONFIG.candleWindowMinutes);
-
-    const wsTick = binanceStream.getLast();
-    const wsPrice = wsTick?.price ?? null;
 
     const polymarketWsTick = polymarketLiveStream.getLast();
     const polymarketWsPrice = polymarketWsTick?.price ?? null;
@@ -577,7 +572,7 @@ async function main() {
         ? (Number(poly.market?.liquidityNum) || Number(poly.market?.liquidity) || null)
         : null;
 
-      const spotPrice = wsPrice ?? lastPrice;
+      const spotPrice = lastPrice;
       const currentPrice = chainlink?.price ?? null;
       const marketSlug = poly.ok ? String(poly.market?.slug ?? "") : "";
       const marketStartMs = poly.ok && poly.market?.eventStartTime ? new Date(poly.market.eventStartTime).getTime() : null;
@@ -632,7 +627,7 @@ async function main() {
         }
       }
 
-      const binanceSpotBaseLine = colorPriceLine({ label: "BTC (Binance)", price: spotPrice, prevPrice: prevSpotPrice, decimals: 0, prefix: "$" });
+      const krakenSpotBaseLine = colorPriceLine({ label: "BTC (Kraken)", price: spotPrice, prevPrice: prevSpotPrice, decimals: 0, prefix: "$" });
       const diffLine = (spotPrice !== null && currentPrice !== null && Number.isFinite(spotPrice) && Number.isFinite(currentPrice) && currentPrice !== 0)
         ? (() => {
           const diffUsd = spotPrice - currentPrice;
@@ -641,9 +636,9 @@ async function main() {
           return ` (${sign}$${Math.abs(diffUsd).toFixed(2)}, ${sign}${Math.abs(diffPct).toFixed(2)}%)`;
         })()
         : "";
-      const binanceSpotLine = `${binanceSpotBaseLine}${diffLine}`;
-      const binanceSpotValue = binanceSpotLine.split(": ")[1] ?? binanceSpotLine;
-      const binanceSpotKvLine = kv("BTC (Binance):", binanceSpotValue);
+      const krakenSpotLine = `${krakenSpotBaseLine}${diffLine}`;
+      const krakenSpotValue = krakenSpotLine.split(": ")[1] ?? krakenSpotLine;
+      const krakenSpotKvLine = kv("BTC (Kraken):", krakenSpotValue);
 
       const titleLine = poly.ok ? `${poly.market?.question ?? "-"}` : "-";
       const marketLine = kv("Market:", poly.ok ? (poly.market?.slug ?? "-") : "-");
@@ -691,7 +686,7 @@ async function main() {
         "",
         sepLine(),
         "",
-        binanceSpotKvLine,
+        krakenSpotKvLine,
         "",
         sepLine(),
         "",

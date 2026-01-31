@@ -6,7 +6,7 @@ It combines:
 - Polymarket market selection + UP/DOWN prices + liquidity
 - Polymarket live WS **Chainlink BTC/USD CURRENT PRICE** (same feed shown on the Polymarket UI)
 - Fallback to on-chain Chainlink (Polygon) via HTTP/WSS RPC
-- Binance spot price for reference
+- Kraken spot price for reference
 - Short-term TA snapshot (Heiken Ashi, RSI, MACD, VWAP, Delta 1/3m)
 - A simple live **Predict (LONG/SHORT %)** derived from the assistant’s current TA scoring
 
