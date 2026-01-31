@@ -20,6 +20,7 @@ import { detectRegime } from "./engines/regime.js";
 import { scoreDirection, applyTimeAwareness } from "./engines/probability.js";
 import { computeEdge, decide } from "./engines/edge.js";
 import { appendCsvRow, formatNumber, formatPct, getCandleWindowTiming, sleep } from "./utils.js";
+import { PaperTrader } from "./paper.js";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
@@ -404,6 +405,7 @@ async function fetchPolymarketSnapshot() {
 async function main() {
   const polymarketLiveStream = startPolymarketChainlinkPriceStream({});
   const chainlinkStream = startChainlinkPriceStream({});
+  const paperTrader = new PaperTrader({ logPath: "./logs/paper_trades.csv" });
 
   let prevSpotPrice = null;
   let prevCurrentPrice = null;
@@ -614,6 +616,19 @@ async function main() {
       }
 
       const priceToBeat = priceToBeatState.slug === marketSlug ? priceToBeatState.value : null;
+
+      paperTrader.onSignal({
+        action: rec.action,
+        side: rec.side,
+        marketSlug,
+        priceToBeat,
+        settlementMs,
+        marketUp,
+        marketDown,
+        timestampMs: nowMs
+      });
+      paperTrader.onTick({ marketSlug, currentPrice, nowMs });
+
       const currentPriceBaseLine = colorPriceLine({
         label: "CURRENT PRICE",
         price: currentPrice,
@@ -637,6 +652,22 @@ async function main() {
         : `${ptbDeltaColor}${ptbDelta > 0 ? "+" : ptbDelta < 0 ? "-" : ""}$${Math.abs(ptbDelta).toFixed(2)}${ANSI.reset}`;
       const currentPriceValue = currentPriceBaseLine.split(": ")[1] ?? currentPriceBaseLine;
       const currentPriceLine = kv("CURRENT PRICE:", `${currentPriceValue} (${ptbDeltaText})`);
+
+      const paperSummary = paperTrader.getSummary();
+      const pnl = paperSummary.totalPnl;
+      const pnlColor = pnl > 0 ? ANSI.green : pnl < 0 ? ANSI.red : ANSI.gray;
+      const pnlSign = pnl > 0 ? "+" : pnl < 0 ? "-" : "";
+      const pnlText = `${pnlColor}${pnlSign}$${Math.abs(pnl).toFixed(2)}${ANSI.reset}`;
+      const winRateText = `${(paperSummary.winRate * 100).toFixed(1)}%`;
+      const ddText = `${ANSI.gray}$${paperSummary.maxDrawdown.toFixed(2)}${ANSI.reset}`;
+
+      const openPos = paperSummary.position;
+      const openTimeLeft = openPos?.settlementMs
+        ? fmtTimeLeft((openPos.settlementMs - nowMs) / 60_000)
+        : "-";
+      const openLine = openPos
+        ? `${openPos.side} @ ${openPos.entryPrice.toFixed(2)} | PTB $${formatNumber(openPos.priceToBeat, 0)} | settles in ${openTimeLeft}`
+        : `${ANSI.gray}No open position${ANSI.reset}`;
 
       if (poly.ok && poly.market && priceToBeatState.value === null) {
         const slug = safeFileSlug(poly.market.slug || poly.market.id || "market");
@@ -707,6 +738,12 @@ async function main() {
         settlementLeftMin !== null ? kv("Time left:", `${polyTimeLeftColor}${fmtTimeLeft(settlementLeftMin)}${ANSI.reset}`) : null,
         priceToBeat !== null ? kv("PRICE TO BEAT: ", `$${formatNumber(priceToBeat, 0)}`) : kv("PRICE TO BEAT: ", `${ANSI.gray}-${ANSI.reset}`),
         currentPriceLine,
+        "",
+        sepLine(),
+        "",
+        section("PAPER TRADING"),
+        kv("Status:", openLine),
+        kv("Trades:", `${paperSummary.trades} | Win ${winRateText} | PnL ${pnlText} | DD ${ddText}`),
         "",
         sepLine(),
         "",
